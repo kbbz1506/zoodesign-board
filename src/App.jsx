@@ -1,6 +1,21 @@
 import { useState, useEffect } from "react";
 
-const B={magenta:"#ed2290",tangerine:"#faa41a",royalBlue:"#2e4ea2",black:"#000",G:"linear-gradient(90deg,#ed2290 0%,#f4622a 50%,#faa41a 100%)",s1:"#0a0a0a",s2:"#111",border:"#1e1e1e",b2:"#2a2a2a",tp:"#f5f0ef",ts:"#7a7a7a",tm:"#3a3a3a",green:"#22c55e",red:"#ef4444"};
+const B={
+  magenta:"#ed2290",tangerine:"#faa41a",royalBlue:"#2e4ea2",black:"#0d0d0d",
+  G:"linear-gradient(90deg,#ed2290 0%,#f4622a 50%,#faa41a 100%)",
+  // Surfaces — noticeably lighter so cells are readable
+  s1:"#161616",   // page background
+  s2:"#1f1f1f",   // card/panel background
+  s3:"#2a2a2a",   // elevated surface
+  // Borders — visible but not heavy
+  border:"#2e2e2e",
+  b2:"#3a3a3a",
+  // Text — much higher contrast throughout
+  tp:"#f0ece8",   // primary text — near white
+  ts:"#b0a8a0",   // secondary text — warm mid-grey (was #7a7a7a, almost invisible)
+  tm:"#6e6560",   // muted text — still readable (was #3a3a3a, disappeared)
+  green:"#22c55e",red:"#ef4444"
+};
 const G=B.G;
 const CC={BBC:"#2e4ea2",BUNNINGS:"#22c55e","COMM BANK":"#faa41a",PROLOGICAL:"#f97316",TOGA:"#06b6d4","TWO BLIND MICE":"#8b5cf6",WARRIGAL:"#ec4899"};
 const PC={urgent:"#ef4444",high:"#faa41a",normal:"#22c55e",low:"#4b5563"};
@@ -147,15 +162,19 @@ function CBar({available,committed}){
   const safe=Math.max(available,0.01),pct=Math.min((committed/safe)*100,110);
   const over=committed>available,warn=!over&&committed/available>=0.75;
   const barBg=over?B.red:warn?B.tangerine:G;
+  const freeH=Math.max(available-committed,0);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-        <span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:700,color:over?B.red:warn?B.tangerine:B.green}}>
-          {over?`+${(committed-available).toFixed(1)}h over`:`${hl(Math.max(available-committed,0))} free`}
+        <span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:700,
+          color:over?B.red:warn?B.tangerine:"#4ade80"}}>  {/* brighter green */}
+          {over?`+${(committed-available).toFixed(1)}h over`:`${hl(freeH)} free`}
         </span>
-        <span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",color:B.tm}}>{committed>0?`${committed}/${available}h`:`${available}h`}</span>
+        <span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",color:"#888",fontWeight:500}}>
+          {committed>0?`${committed}/${available}h`:`${available}h`}
+        </span>
       </div>
-      <div style={{height:4,background:"#1a1a1a",borderRadius:2,overflow:"hidden"}}>
+      <div style={{height:4,background:"#2a2a2a",borderRadius:2,overflow:"hidden"}}>
         <div style={{height:"100%",width:`${Math.min(pct,100)}%`,background:barBg,borderRadius:2,transition:"width 0.4s"}}/>
       </div>
     </div>
@@ -165,25 +184,56 @@ function CBar({available,committed}){
 function DayCell({day,cap,committed,taskCount,isToday,onClick}){
   const avail=cap?.availableHours??0,status=cap?.status??"Unavailable";
   const isPH=status==="Public Holiday",unavail=status==="Unavailable"||avail===0;
+  const partAvail=status==="Partially Available";
   const over=committed>avail&&avail>0;
   const[hov,setHov]=useState(false);
-  let bg=B.s1;if(isPH)bg="#120a00";else if(unavail)bg="#080808";else if(isToday)bg="#110008";
-  const bdr=hov&&!unavail?B.magenta:isToday?`${B.magenta}55`:over?`${B.red}66`:B.border;
+
+  // Clear visual hierarchy: available = noticeably lighter, unavailable = dark/muted, today = tinted
+  let bg="#1a1a1a"; // default unavailable — dark but not black
+  if(isPH) bg="#1c1506";                          // warm dark amber tint
+  else if(unavail) bg="#111";                     // darkest — clearly off
+  else if(isToday) bg="#1e0d18";                  // magenta-tinted for today
+  else if(partAvail) bg="#1c1a14";                // slight warm tint for partial
+  else bg="#1e2018";                              // available — slightly lifted warm green-tinted dark
+
+  const bdr=hov&&!unavail
+    ? B.magenta
+    : isToday ? `${B.magenta}88`
+    : over ? `${B.red}88`
+    : !unavail&&!isPH ? "#3a3a3a"                 // available cells get a visible border
+    : "#202020";                                  // unavailable cells recede
+
+  // Day number colour — available = warm white, unavailable = clearly dimmed
+  const dayNumColor=unavail&&!isPH?"#333":isToday?"#fff":!unavail?"#d4cfc9":"#555";
+  const dayLabelColor=unavail&&!isPH?"#2a2a2a":isToday?B.magenta:!unavail?"#7a7268":"#333";
+
   return(
     <div onClick={()=>{if(!unavail||isPH)onClick();}} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{background:bg,borderRadius:6,padding:"8px 9px",minHeight:82,border:`1px solid ${bdr}`,cursor:unavail&&!isPH?"default":"pointer",transition:"border-color 0.15s",position:"relative",overflow:"hidden"}}>
+      style={{background:bg,borderRadius:6,padding:"8px 9px",minHeight:82,border:`1px solid ${bdr}`,cursor:unavail&&!isPH?"default":"pointer",transition:"border-color 0.15s,background 0.15s",position:"relative",overflow:"hidden"}}>
       {isToday&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:G}}/>}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5,marginTop:isToday?4:0}}>
         <div>
-          <div style={{fontSize:8,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",color:isToday?B.magenta:B.tm}}>{DS[(day.getDay()+6)%7]}</div>
-          <div style={{fontSize:15,fontFamily:"'Poppins',sans-serif",fontWeight:800,lineHeight:1,...(isToday?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:"#282828"})}}>{day.getDate()}</div>
+          <div style={{fontSize:8,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",color:dayLabelColor}}>{DS[(day.getDay()+6)%7]}</div>
+          <div style={{fontSize:15,fontFamily:"'Poppins',sans-serif",fontWeight:800,lineHeight:1,
+            ...(isToday?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:dayNumColor})
+          }}>{day.getDate()}</div>
         </div>
-        {isPH?<span style={{fontSize:7,color:B.tangerine,background:"rgba(250,164,26,0.1)",border:`1px solid ${B.tangerine}44`,padding:"1px 5px",borderRadius:10,fontFamily:"'Poppins',sans-serif",fontWeight:700}}>PH</span>
-          :!unavail&&<span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:700,color:over?B.red:B.tm}}>{avail}h</span>}
+        {isPH
+          ? <span style={{fontSize:7,color:B.tangerine,background:"rgba(250,164,26,0.15)",border:`1px solid ${B.tangerine}66`,padding:"1px 5px",borderRadius:10,fontFamily:"'Poppins',sans-serif",fontWeight:700}}>PH</span>
+          : !unavail&&<span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:700,color:over?B.red:"#a09890"}}>{avail}h</span>}
       </div>
       {!unavail&&!isPH&&avail>0&&<CBar available={avail} committed={committed}/>}
-      {taskCount>0&&<div style={{marginTop:5,display:"flex",alignItems:"center",gap:4}}><div style={{width:6,height:6,borderRadius:"50%",background:over?B.red:G,backgroundSize:"cover"}}/><span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:600,color:over?B.red:B.magenta}}>{taskCount} task{taskCount!==1?"s":""}</span></div>}
-      {unavail&&!isPH&&<div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",marginTop:6,opacity:0.25}}>—</div>}
+      {taskCount>0&&(
+        <div style={{marginTop:5,display:"flex",alignItems:"center",gap:4}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:over?B.red:B.magenta}}/>
+          <span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:600,color:over?B.red:B.magenta}}>
+            {taskCount} task{taskCount!==1?"s":""}
+          </span>
+        </div>
+      )}
+      {unavail&&!isPH&&(
+        <div style={{fontSize:11,color:"#2a2a2a",fontFamily:"'Poppins',sans-serif",marginTop:6,textAlign:"center"}}>—</div>
+      )}
     </div>
   );
 }
@@ -466,8 +516,8 @@ export default function App(){
           <Logo/>
           <div style={{width:1,height:26,background:B.border}}/>
           <div>
-            <div style={{fontSize:9,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Studio Board</div>
-            <div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",opacity:0.5}}>{filt.length} unassigned · {ph.toFixed(1)}h pending</div>
+            <div style={{fontSize:9,color:"#888",fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Studio Board</div>
+            <div style={{fontSize:8,color:"#666",fontFamily:"'Poppins',sans-serif"}}>{filt.length} unassigned · {ph.toFixed(1)}h pending</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:9}}>
@@ -514,9 +564,9 @@ export default function App(){
                   <div style={{display:"flex",alignItems:"center",gap:8,paddingRight:8,paddingTop:4}}>
                     <Av name={designer.designer} role={designer.role} size={32}/>
                     <div style={{minWidth:0}}>
-                      <div style={{fontSize:11,color:B.tp,fontFamily:"'Poppins',sans-serif",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{designer.designer}</div>
-                      <div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif"}}>{designer.role}</div>
-                      <div style={{fontSize:8,fontFamily:"'Poppins',sans-serif",fontWeight:700,marginTop:1,...(wkT>0?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:B.tm})}}>{wkT}h this week</div>
+                      <div style={{fontSize:11,color:"#f0ece8",fontFamily:"'Poppins',sans-serif",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{designer.designer}</div>
+                      <div style={{fontSize:8,color:"#888",fontFamily:"'Poppins',sans-serif",fontWeight:500}}>{designer.role}</div>
+                      <div style={{fontSize:8,fontFamily:"'Poppins',sans-serif",fontWeight:700,marginTop:1,...(wkT>0?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:"#555"})}}>{wkT}h this week</div>
                     </div>
                   </div>
                   {wd.map((day,i)=>{
@@ -568,51 +618,51 @@ export default function App(){
         )}
 
         {/* SIDEBAR */}
-        <div style={{width:186,borderLeft:`1px solid ${B.border}`,padding:"14px 13px",overflowY:"auto",flexShrink:0,background:B.s1}}>
+        <div style={{width:186,borderLeft:`1px solid ${B.border}`,padding:"14px 13px",overflowY:"auto",flexShrink:0,background:"#141414"}}>
           <div style={{height:2,background:G,borderRadius:1,marginBottom:12}}/>
-          <div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10}}>Week Overview</div>
+          <div style={{fontSize:8,color:"#888",fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10}}>Week Overview</div>
           {DESIGNERS.map(d=>{
             const dCp=cap.filter(c=>c.clickupUserId===d.clickupUserId);
             const totH=dCp.reduce((s,c)=>s+(c.availableHours||0),0);
             const bkH=(asgn[d.clickupUserId]||[]).reduce((s,t)=>s+mh(t.time_estimate),0);
             const pct=totH>0?Math.min((bkH/totH)*100,100):0;
             return(
-              <div key={d.clickupUserId} style={{marginBottom:11,paddingBottom:11,borderBottom:`1px solid ${B.border}`}}>
+              <div key={d.clickupUserId} style={{marginBottom:11,paddingBottom:11,borderBottom:`1px solid #2a2a2a`}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
                   <Av name={d.designer} role={d.role} size={20}/>
                   <div style={{minWidth:0,flex:1}}>
-                    <div style={{fontSize:10,color:B.tp,fontFamily:"'Poppins',sans-serif",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{d.designer.split(" ")[0]}</div>
-                    <div style={{fontSize:7,color:B.tm,fontFamily:"'Poppins',sans-serif"}}>{d.role}</div>
+                    <div style={{fontSize:10,color:"#e8e2dc",fontFamily:"'Poppins',sans-serif",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{d.designer.split(" ")[0]}</div>
+                    <div style={{fontSize:7,color:"#777",fontFamily:"'Poppins',sans-serif",fontWeight:500}}>{d.role}</div>
                   </div>
-                  <div style={{fontSize:10,fontFamily:"'Poppins',sans-serif",fontWeight:800,flexShrink:0,...(totH>0?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:B.tm})}}>{totH}h</div>
+                  <div style={{fontSize:10,fontFamily:"'Poppins',sans-serif",fontWeight:800,flexShrink:0,...(totH>0?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:"#444"})}}>{totH}h</div>
                 </div>
-                <div style={{height:3,background:"#1a1a1a",borderRadius:2,overflow:"hidden",marginBottom:bkH>0?3:0}}>
+                <div style={{height:3,background:"#2a2a2a",borderRadius:2,overflow:"hidden",marginBottom:bkH>0?3:0}}>
                   <div style={{height:"100%",width:`${pct}%`,background:pct>80?B.tangerine:G,borderRadius:2,transition:"width 0.4s"}}/>
                 </div>
-                {bkH>0&&<div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif"}}>{bkH}h booked</div>}
+                {bkH>0&&<div style={{fontSize:8,color:"#888",fontFamily:"'Poppins',sans-serif",fontWeight:500}}>{bkH}h booked</div>}
               </div>
             );
           })}
-          <div style={{marginTop:5,paddingTop:10,borderTop:`1px solid ${B.border}`}}>
-            <div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>Unassigned</div>
-            <div style={{fontSize:28,fontFamily:"'Poppins',sans-serif",fontWeight:900,lineHeight:1,...(filt.length>0?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:B.tm})}}>{filt.length}</div>
-            <div style={{fontSize:9,color:B.tm,fontFamily:"'Poppins',sans-serif",marginTop:2}}>{ph.toFixed(1)}h pending</div>
+          <div style={{marginTop:5,paddingTop:10,borderTop:`1px solid #2a2a2a`}}>
+            <div style={{fontSize:8,color:"#888",fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>Unassigned</div>
+            <div style={{fontSize:28,fontFamily:"'Poppins',sans-serif",fontWeight:900,lineHeight:1,...(filt.length>0?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:"#444"})}}>{filt.length}</div>
+            <div style={{fontSize:9,color:"#888",fontFamily:"'Poppins',sans-serif",marginTop:2}}>{ph.toFixed(1)}h pending</div>
           </div>
-          <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${B.border}`}}>
-            <div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:7}}>Priority</div>
+          <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid #2a2a2a`}}>
+            <div style={{fontSize:8,color:"#888",fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:7}}>Priority</div>
             {["urgent","high","normal"].map(p=>{
               const cnt=filt.filter(t=>t.priority?.priority===p).length;
               if(!cnt)return null;
               return(
                 <div key={p} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                  <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:6,height:6,borderRadius:"50%",background:PC[p]}}/><span style={{fontSize:9,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>{p}</span></div>
+                  <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:6,height:6,borderRadius:"50%",background:PC[p]}}/><span style={{fontSize:9,color:"#999",fontFamily:"'Poppins',sans-serif",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>{p}</span></div>
                   <span style={{fontSize:12,color:PC[p],fontFamily:"'Poppins',sans-serif",fontWeight:800}}>{cnt}</span>
                 </div>
               );
             })}
           </div>
-          <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${B.border}`}}>
-            <button onClick={()=>setOps(true)} style={{width:"100%",padding:"7px 0",background:"rgba(237,34,144,0.08)",border:`1px solid ${B.magenta}33`,borderRadius:6,cursor:"pointer",fontFamily:"'Poppins',sans-serif",fontSize:9,fontWeight:700,color:B.magenta,letterSpacing:"0.06em",transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(237,34,144,0.15)";}} onMouseLeave={e=>{e.currentTarget.style.background="rgba(237,34,144,0.08)";}}>📋 OPS GUIDE</button>
+          <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid #2a2a2a`}}>
+            <button onClick={()=>setOps(true)} style={{width:"100%",padding:"7px 0",background:"rgba(237,34,144,0.08)",border:`1px solid ${B.magenta}44`,borderRadius:6,cursor:"pointer",fontFamily:"'Poppins',sans-serif",fontSize:9,fontWeight:700,color:B.magenta,letterSpacing:"0.06em",transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(237,34,144,0.2)";}} onMouseLeave={e=>{e.currentTarget.style.background="rgba(237,34,144,0.08)";}}>📋 OPS GUIDE</button>
           </div>
         </div>
       </div>
