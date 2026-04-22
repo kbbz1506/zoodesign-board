@@ -8,7 +8,7 @@
 // CLICKUP_TOKEN: your personal ClickUp API token (pk_...)
 // NOTION_TOKEN:  your Notion internal integration token (secret_...)
 export const CLICKUP_TOKEN = "pk_48795404_K4GRD4VKKJNQ1KZUMM2UMFDUZ1MLX1VX";
-export const NOTION_TOKEN  = "YOUR_NOTION_TOKEN_HERE"; // ← paste secret_... here
+export const NOTION_TOKEN  = "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";
 
 // ─── IDs (confirmed in Step 1) ───────────────────────────────
 const CLICKUP_LIST_ID       = "901611810331";
