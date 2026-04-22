@@ -75,12 +75,22 @@ const OPS=[
 function ld(s){const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d,12,0,0);}
 function lms(s){return ld(s).getTime();}
 function fd(d){if(!d)return"";const dt=d instanceof Date?d:new Date(Number(d));return`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;}
-function mon(date){const d=new Date(date),dw=d.getDay();d.setDate(d.getDate()+(dw===0?-6:1-dw));d.setHours(12,0,0,0);return d;}
+function mon(date){
+  // Always work from local noon to avoid DST/timezone boundary issues
+  const d=new Date(date);
+  d.setHours(12,0,0,0);
+  const dw=d.getDay(); // 0=Sun,1=Mon...6=Sat
+  const diff=dw===0?-6:1-dw; // shift to Monday
+  d.setDate(d.getDate()+diff);
+  d.setHours(12,0,0,0);
+  return d;
+}
 function wdays(monday){return Array.from({length:5},(_,i)=>{const d=new Date(monday);d.setDate(d.getDate()+i);d.setHours(12,0,0,0);return d;});}
 function fs(d){return new Date(d).toLocaleDateString("en-AU",{day:"numeric",month:"short"});}
 function ff(d){if(!d)return"—";return new Date(d instanceof Date?d:Number(d)).toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short",year:"numeric"});}
-function mh(ms){return ms?Math.round((ms/3600000)*10)/10:0;}
-function hl(h){if(!h)return"—";return`${h%1===0?h:h.toFixed(1)}h`;}
+// Round ms to hours — avoid floating point by rounding to 1 decimal
+function mh(ms){if(!ms)return 0;return Math.round(ms/360000)/10;}
+function hl(h){if(!h)return"—";return`${Number.isInteger(h)?h:h.toFixed(1)}h`;}
 function ini(n){return n.split(" ").map(x=>x[0]).slice(0,2).join("").toUpperCase();}
 
 // ─── MOCK DATA ────────────────────────────────────────────────
@@ -732,7 +742,7 @@ export default function App(){
                   return(
                     <div key={i} style={{textAlign:"center",padding:"4px 0"}}>
                       <div style={{fontSize:13,fontFamily:"'Poppins',sans-serif",fontWeight:800,...(tot>0?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:B.tm})}}>{tot}h</div>
-                      {bk>0&&<div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif"}}>{bk}h booked</div>}
+                      {bk>0&&<div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif"}}>{hl(Math.round(bk*10)/10)} booked</div>}
                     </div>
                   );
                 })}
@@ -784,7 +794,7 @@ export default function App(){
                 <div style={{height:3,background:"#2a2a2a",borderRadius:2,overflow:"hidden",marginBottom:bkH>0?3:0}}>
                   <div style={{height:"100%",width:`${pct}%`,background:pct>80?B.tangerine:G,borderRadius:2,transition:"width 0.4s"}}/>
                 </div>
-                {bkH>0&&<div style={{fontSize:8,color:"#888",fontFamily:"'Poppins',sans-serif",fontWeight:500}}>{bkH}h booked</div>}
+                {bkH>0&&<div style={{fontSize:8,color:"#888",fontFamily:"'Poppins',sans-serif",fontWeight:500}}>{hl(Math.round(bkH*10)/10)} booked</div>}
               </div>
             );
           })}
