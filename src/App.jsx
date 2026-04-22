@@ -1,4 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { fetchClickUpTasks, fetchNotionCapacity, fetchNotionSkills, assignTaskInClickUp, unassignTaskInClickUp, NOTION_TOKEN } from "./api.js";
+
+const API_READY = NOTION_TOKEN !== "YOUR_NOTION_TOKEN_HERE";
 
 const B={
   magenta:"#ed2290",tangerine:"#faa41a",royalBlue:"#2e4ea2",black:"#0d0d0d",
@@ -280,7 +283,7 @@ function DTask({task,allD,curId,onR,onU,idx}){
   );
 }
 
-function Drawer({open,designer,day,cap,tasks,onClose,onReassign,onUnassign}){
+function Drawer({open,designer,day,cap,tasks,designers,onClose,onReassign,onUnassign}){
   useEffect(()=>{const h=e=>{if(e.key==="Escape")onClose();};if(open)document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);},[open,onClose]);
   if(!open||!designer||!day)return null;
   const avail=cap?.availableHours||0,committed=tasks.reduce((s,t)=>s+mh(t.time_estimate),0);
@@ -309,7 +312,7 @@ function Drawer({open,designer,day,cap,tasks,onClose,onReassign,onUnassign}){
           {tasks.length===0?<div style={{textAlign:"center",padding:"50px 0"}}><div style={{fontSize:32,marginBottom:8}}>📋</div><div style={{fontSize:12,color:B.tm,fontFamily:"'Poppins',sans-serif"}}>No tasks assigned this day</div></div>:(
             <>
               <div style={{fontSize:9,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>{tasks.length} Task{tasks.length!==1?"s":""} · {hl(committed)} committed</div>
-              {tasks.map((task,idx)=><DTask key={task.id} task={task} allD={DESIGNERS} curId={designer.clickupUserId} onR={onReassign} onU={onUnassign} idx={idx}/>)}
+              {tasks.map((task,idx)=><DTask key={task.id} task={task} allD={designers} curId={designer.clickupUserId} onR={onReassign} onU={onUnassign} idx={idx}/>)}
             </>
           )}
         </div>
@@ -323,7 +326,7 @@ function Drawer({open,designer,day,cap,tasks,onClose,onReassign,onUnassign}){
   );
 }
 
-function TCard({task,onAssign,isAssigning}){
+function TCard({task,designers,onAssign,isAssigning}){
   const[exp,setExp]=useState(false),[sd,setSd]=useState(""),[sdate,setSdate]=useState("");
   const cc=CC[task.client]||B.magenta,sdl=task.stage_deadline?new Date(Number(task.stage_deadline)):null;
   const dlU=sdl&&(sdl-Date.now())<3*24*3600*1000;
@@ -360,7 +363,7 @@ function TCard({task,onAssign,isAssigning}){
           {isBriefReq&&<div style={{padding:"8px 10px",background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.25)",borderRadius:6,marginBottom:10,fontSize:10,color:"#a78bfa",fontFamily:"'Poppins',sans-serif",lineHeight:1.5}}>📝 Brief not yet finalised — you can assign a designer for forecasting. Don't formally assign in ClickUp until the brief is ready.</div>}
           <div style={{marginBottom:12}}>
             <div style={{fontSize:9,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:7}}>Skill Match</div>
-            {DESIGNERS.map(d=>{const match=sm(d),badge=MB[match],rc=RC[d.role]||B.magenta;return(
+            {designers.map(d=>{const match=sm(d),badge=MB[match],rc=RC[d.role]||B.magenta;return(
               <div key={d.clickupUserId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${B.border}`}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <div style={{width:18,height:18,borderRadius:"50%",background:"#111",border:`1px solid ${rc}44`,display:"flex",alignItems:"center",justifyContent:"center"}}>{gt(ini(d.designer),7,800)}</div>
@@ -374,14 +377,14 @@ function TCard({task,onAssign,isAssigning}){
           <div style={{display:"flex",gap:6,marginBottom:7}}>
             <select value={sd} onChange={e=>setSd(e.target.value)} style={{flex:1,background:"#0a0a0a",border:`1px solid ${B.b2}`,color:B.ts,borderRadius:6,padding:"6px 8px",fontSize:11,fontFamily:"'Poppins',sans-serif",cursor:"pointer"}}>
               <option value="">Select designer…</option>
-              {DESIGNERS.map(d=><option key={d.clickupUserId} value={d.clickupUserId}>{d.designer}</option>)}
+              {designers.map(d=><option key={d.clickupUserId} value={d.clickupUserId}>{d.designer}</option>)}
             </select>
             <div style={{flex:1}}>
               <input type="date" value={sdate} onChange={e=>setSdate(e.target.value)} style={{width:"100%",background:"#0a0a0a",border:`1px solid ${B.b2}`,color:B.ts,borderRadius:6,padding:"6px 8px",fontSize:11,fontFamily:"'Poppins',sans-serif",cursor:"pointer"}}/>
               <div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",marginTop:2}}>Sets ClickUp due date</div>
             </div>
           </div>
-          <button onClick={()=>{if(sd&&sdate){const d=DESIGNERS.find(x=>x.clickupUserId===sd);onAssign(task.id,sd,sdate,d?.designer);}}} disabled={!sd||!sdate||isAssigning}
+          <button onClick={()=>{if(sd&&sdate){const d=designers.find(x=>x.clickupUserId===sd);onAssign(task.id,sd,sdate,d?.designer);}}} disabled={!sd||!sdate||isAssigning}
             style={{width:"100%",padding:"9px 0",background:sd&&sdate?G:"#1a1a1a",color:sd&&sdate?"#000":B.tm,border:"none",borderRadius:6,fontSize:11,fontFamily:"'Poppins',sans-serif",fontWeight:800,cursor:sd&&sdate?"pointer":"not-allowed"}}>
             {isAssigning?"ASSIGNING…":"ASSIGN IN CLICKUP →"}
           </button>
@@ -429,11 +432,18 @@ function OpsGuide({onClose}){
 
 // ─── MAIN APP ─────────────────────────────────────────────────
 export default function App(){
-  const[ws,setWs]=useState(()=>mon(ld("2026-04-28")));
-  const[ua,setUa]=useState(UINIT);
+  // Week state — default to current week's Monday
+  const[ws,setWs]=useState(()=>mon(new Date()));
+  // Task data
+  const[ua,setUa]=useState([]);           // unassigned tasks (Designer field empty)
+  const[asgn,setAsgn]=useState({});       // assigned tasks keyed by clickupUserId
+  // Capacity + designers from Notion
   const[cap,setCap]=useState([]);
-  const[asgn,setAsgn]=useState(AINIT);
+  const[designers,setDesigners]=useState(DESIGNERS); // starts with hardcoded, replaced by Notion
+  // UI state
   const[aId,setAId]=useState(null);
+  const[loading,setLoading]=useState(false);
+  const[loadError,setLoadError]=useState(null);
   const[toast,setToast]=useState(null);
   const[fSt,setFSt]=useState("all");
   const[fCl,setFCl]=useState("all");
@@ -443,33 +453,151 @@ export default function App(){
   const[ops,setOps]=useState(false);
 
   const wd=wdays(ws);
-  useEffect(()=>{setCap(buildCap(ws));},[ws]);
+  const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),5000);};
 
-  const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),4000);};
+  // ── LOAD ALL DATA ──────────────────────────────────────────
+  const loadData=useCallback(async()=>{
+    setLoading(true);
+    setLoadError(null);
+    try {
+      if(API_READY){
+        // ── LIVE MODE ──────────────────────────────────────
+        const weekStart=fd(wd[0]);
+        const weekEnd=fd(wd[4]);
 
-  const doAssign=(tid,uid,dateStr,dName)=>{
+        // Fetch all three sources in parallel
+        const[taskData, capData, skillData]=await Promise.all([
+          fetchClickUpTasks(),
+          fetchNotionCapacity(weekStart, weekEnd),
+          fetchNotionSkills(),
+        ]);
+
+        // Update designers from Notion skills (Option C — Notion controls who's schedulable)
+        if(skillData.length>0) setDesigners(skillData);
+
+        // Set unassigned tasks
+        setUa(taskData.unassigned);
+
+        // Convert assigned tasks array into object keyed by clickupUserId
+        const asgnMap={};
+        taskData.assigned.forEach(t=>{
+          const uid=t.designerUserId;
+          if(!uid)return;
+          if(!asgnMap[uid])asgnMap[uid]=[];
+          asgnMap[uid].push(t);
+        });
+        setAsgn(asgnMap);
+
+        // Set capacity
+        setCap(capData);
+
+      } else {
+        // ── DEMO MODE (Notion token not yet configured) ────
+        setCap(buildCap(ws));
+        setUa(UINIT);
+        setAsgn(AINIT);
+        setDesigners(DESIGNERS);
+        if(toast===null){
+          // Show one-time notice that demo data is being used
+          showToast("Running in demo mode — add your Notion token to api.js to load live data","warn");
+        }
+      }
+    } catch(err){
+      console.error("Board load error:", err);
+      setLoadError(err.message);
+      showToast(`Load failed: ${err.message}`,"error");
+      // Fall back to demo data so the board stays usable
+      setCap(buildCap(ws));
+      if(ua.length===0){setUa(UINIT);setAsgn(AINIT);}
+    } finally {
+      setLoading(false);
+    }
+  },[ws]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load on mount and whenever the week changes
+  useEffect(()=>{loadData();},[loadData]);
+
+  // ── ASSIGN ─────────────────────────────────────────────────
+  const doAssign=async(tid,uid,dateStr,dName)=>{
     setAId(tid);
-    setTimeout(()=>{
-      const task=ua.find(t=>t.id===tid);if(!task){setAId(null);return;}
-      const dm=String(lms(dateStr));
-      setUa(p=>p.filter(t=>t.id!==tid));
-      setAsgn(p=>({...p,[uid]:[...(p[uid]||[]),{...task,due_date:dm,assignedTo:uid}]}));
-      showToast(`✓ ${dName} assigned — due date set. Complete formal assignment in ClickUp.`);
-      setAId(null);
-    },500);
+    const task=ua.find(t=>t.id===tid);
+    if(!task){setAId(null);return;}
+    const dm=String(lms(dateStr));
+
+    // Optimistic update — move task immediately so UI feels instant
+    setUa(p=>p.filter(t=>t.id!==tid));
+    setAsgn(p=>({...p,[uid]:[...(p[uid]||[]),{...task,due_date:dm,assignedTo:uid}]}));
+
+    if(API_READY){
+      try{
+        await assignTaskInClickUp(tid, uid, Number(dm));
+        showToast(`✓ ${dName} assigned in ClickUp — complete formal task assignment there too.`);
+      } catch(err){
+        // Roll back optimistic update on failure
+        setUa(p=>[task,...p]);
+        setAsgn(p=>({...p,[uid]:(p[uid]||[]).filter(t=>t.id!==tid)}));
+        showToast(`Assignment failed: ${err.message}`,"error");
+      }
+    } else {
+      showToast(`✓ ${dName} assigned (demo mode — not saved to ClickUp).`);
+    }
+    setAId(null);
   };
 
-  const doReassign=(task,from,to,dateStr)=>{
+  // ── REASSIGN ───────────────────────────────────────────────
+  const doReassign=async(task,from,to,dateStr)=>{
     const dm=String(lms(dateStr));
-    setAsgn(p=>{const n={...p};n[from]=(n[from]||[]).filter(t=>t.id!==task.id);n[to]=[...(n[to]||[]),{...task,due_date:dm,assignedTo:to}];return n;});
-    showToast(`↔ Reassigned to ${DESIGNERS.find(d=>d.clickupUserId===to)?.designer} — update ClickUp to confirm.`);
+    const toName=designers.find(d=>d.clickupUserId===to)?.designer;
+
+    // Optimistic update
+    setAsgn(p=>{
+      const n={...p};
+      n[from]=(n[from]||[]).filter(t=>t.id!==task.id);
+      n[to]=[...(n[to]||[]),{...task,due_date:dm,assignedTo:to}];
+      return n;
+    });
+
+    if(API_READY){
+      try{
+        // Unset old designer, set new one + new due date
+        await unassignTaskInClickUp(task.id, from);
+        await assignTaskInClickUp(task.id, to, Number(dm));
+        showToast(`↔ Reassigned to ${toName} in ClickUp.`);
+      } catch(err){
+        // Roll back
+        setAsgn(p=>{
+          const n={...p};
+          n[from]=[...(n[from]||[]),task];
+          n[to]=(n[to]||[]).filter(t=>t.id!==task.id);
+          return n;
+        });
+        showToast(`Reassign failed: ${err.message}`,"error");
+      }
+    } else {
+      showToast(`↔ Reassigned to ${toName} (demo mode).`);
+    }
     setDrawer({open:false,designer:null,day:null});
   };
 
-  const doUnassign=(task,from)=>{
+  // ── UNASSIGN ───────────────────────────────────────────────
+  const doUnassign=async(task,from)=>{
+    // Optimistic update
     setAsgn(p=>({...p,[from]:(p[from]||[]).filter(t=>t.id!==task.id)}));
     setUa(p=>[{...task,due_date:null,assignedTo:undefined},...p]);
-    showToast("Task returned to Unassigned. Remove designer in ClickUp too.","warn");
+
+    if(API_READY){
+      try{
+        await unassignTaskInClickUp(task.id, from);
+        showToast("Task unassigned. Remove the Designer field in ClickUp too.","warn");
+      } catch(err){
+        // Roll back
+        setAsgn(p=>({...p,[from]:[...(p[from]||[]),task]}));
+        setUa(p=>p.filter(t=>t.id!==task.id));
+        showToast(`Unassign failed: ${err.message}`,"error");
+      }
+    } else {
+      showToast("Task returned to Unassigned (demo mode).","warn");
+    }
     setDrawer({open:false,designer:null,day:null});
   };
 
@@ -506,9 +634,21 @@ export default function App(){
         @keyframes sIR{from{transform:translateX(30px);opacity:0}to{transform:translateX(0);opacity:1}}
         @keyframes fU{from{transform:translateY(6px);opacity:0}to{transform:translateY(0);opacity:1}}
         @keyframes tIn{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}
+        @keyframes loadBar{0%{opacity:0.4;transform:scaleX(0.3);transform-origin:left}50%{opacity:1;transform:scaleX(1);transform-origin:left}100%{opacity:0.4;transform:scaleX(0.3);transform-origin:right}}
       `}</style>
 
-      {toast&&<div style={{position:"fixed",top:16,right:16,zIndex:500,background:toast.type==="warn"?"#1a0f00":"#001a0a",border:`1px solid ${toast.type==="warn"?B.tangerine+"55":B.green+"55"}`,color:toast.type==="warn"?B.tangerine:B.green,padding:"11px 18px",borderRadius:8,fontSize:12,fontFamily:"'Poppins',sans-serif",fontWeight:500,maxWidth:400,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",animation:"tIn 0.2s ease"}}>{toast.msg}</div>}
+      {toast&&(
+        <div style={{position:"fixed",top:16,right:16,zIndex:500,
+          background:toast.type==="warn"?"#1a0f00":toast.type==="error"?"#1a0000":"#001a0a",
+          border:`1px solid ${toast.type==="warn"?B.tangerine+"55":toast.type==="error"?B.red+"55":B.green+"55"}`,
+          color:toast.type==="warn"?B.tangerine:toast.type==="error"?B.red:B.green,
+          padding:"11px 18px",borderRadius:8,fontSize:12,fontFamily:"'Poppins',sans-serif",
+          fontWeight:500,maxWidth:420,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",animation:"tIn 0.2s ease"}}>
+          {toast.msg}
+        </div>
+      )}
+      {/* Loading bar across top of page */}
+      {loading&&<div style={{position:"fixed",top:0,left:0,right:0,height:2,zIndex:999,background:G,animation:"loadBar 1.5s ease-in-out infinite"}}/>}
 
       {/* HEADER */}
       <div style={{borderBottom:`1px solid ${B.border}`,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"space-between",background:B.black,flexShrink:0,height:54}}>
@@ -538,7 +678,7 @@ export default function App(){
             ))}
           </div>
           <button onClick={()=>setOps(true)} style={{background:"#111",border:`1px solid ${B.b2}`,color:B.tm,padding:"5px 11px",borderRadius:6,cursor:"pointer",fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.06em",display:"flex",alignItems:"center",gap:4,transition:"all 0.12s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=B.tangerine;e.currentTarget.style.color=B.tangerine;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=B.b2;e.currentTarget.style.color=B.tm;}}>📋 OPS GUIDE</button>
-          <button style={{background:"#111",border:`1px solid ${B.b2}`,color:B.tm,padding:"5px 11px",borderRadius:6,cursor:"pointer",fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.06em",transition:"all 0.12s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=B.magenta;e.currentTarget.style.color=B.magenta;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=B.b2;e.currentTarget.style.color=B.tm;}}>↻ REFRESH</button>
+          <button style={{background:"#111",border:`1px solid ${B.b2}`,color:loading?B.magenta:B.tm,padding:"5px 11px",borderRadius:6,cursor:loading?"not-allowed":"pointer",fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.06em",transition:"all 0.12s",opacity:loading?0.7:1}} onClick={()=>{if(!loading)loadData();}} onMouseEnter={e=>{if(!loading){e.currentTarget.style.borderColor=B.magenta;e.currentTarget.style.color=B.magenta;}}} onMouseLeave={e=>{e.currentTarget.style.borderColor=B.b2;e.currentTarget.style.color=B.tm;}}>{loading?"⟳ LOADING…":"↻ REFRESH"}</button>
         </div>
       </div>
 
@@ -555,7 +695,7 @@ export default function App(){
                 </div>
               ))}
             </div>
-            {DESIGNERS.map(designer=>{
+            {designers.map(designer=>{
               const dCp=cap.filter(c=>c.clickupUserId===designer.clickupUserId);
               const dAs=asgn[designer.clickupUserId]||[];
               const wkT=dCp.reduce((s,c)=>s+(c.availableHours||0),0);
@@ -582,8 +722,8 @@ export default function App(){
               <div style={{display:"grid",gridTemplateColumns:"192px repeat(5,1fr)",gap:4}}>
                 <div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,paddingTop:5,textAlign:"right",paddingRight:8,textTransform:"uppercase",letterSpacing:"0.08em"}}>Studio Total</div>
                 {wd.map((day,i)=>{
-                  const tot=DESIGNERS.reduce((s,d)=>{const c=cap.find(x=>x.clickupUserId===d.clickupUserId&&x.date===fd(day));return s+(c?.availableHours||0);},0);
-                  const bk=DESIGNERS.reduce((s,d)=>{const dt=(asgn[d.clickupUserId]||[]).filter(t=>t.due_date&&fd(new Date(Number(t.due_date)))===fd(day));return s+dt.reduce((x,t)=>x+mh(t.time_estimate),0);},0);
+                  const tot=designers.reduce((s,d)=>{const c=cap.find(x=>x.clickupUserId===d.clickupUserId&&x.date===fd(day));return s+(c?.availableHours||0);},0);
+                  const bk=designers.reduce((s,d)=>{const dt=(asgn[d.clickupUserId]||[]).filter(t=>t.due_date&&fd(new Date(Number(t.due_date)))===fd(day));return s+dt.reduce((x,t)=>x+mh(t.time_estimate),0);},0);
                   return(
                     <div key={i} style={{textAlign:"center",padding:"4px 0"}}>
                       <div style={{fontSize:13,fontFamily:"'Poppins',sans-serif",fontWeight:800,...(tot>0?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:B.tm})}}>{tot}h</div>
@@ -611,7 +751,7 @@ export default function App(){
             </div>
             {filt.length===0?<div style={{textAlign:"center",padding:"60px 0"}}><div style={{fontSize:34,marginBottom:8}}>🎉</div>{gt("All tasks assigned!",15,800)}</div>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(330px,1fr))",gap:8}}>
-                {filt.map(t=><TCard key={t.id} task={t} onAssign={doAssign} isAssigning={aId===t.id}/>)}
+                {filt.map(t=><TCard key={t.id} task={t} designers={designers} onAssign={doAssign} isAssigning={aId===t.id}/>)}
               </div>
             )}
           </div>
@@ -621,7 +761,7 @@ export default function App(){
         <div style={{width:186,borderLeft:`1px solid ${B.border}`,padding:"14px 13px",overflowY:"auto",flexShrink:0,background:"#141414"}}>
           <div style={{height:2,background:G,borderRadius:1,marginBottom:12}}/>
           <div style={{fontSize:8,color:"#888",fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:10}}>Week Overview</div>
-          {DESIGNERS.map(d=>{
+          {designers.map(d=>{
             const dCp=cap.filter(c=>c.clickupUserId===d.clickupUserId);
             const totH=dCp.reduce((s,c)=>s+(c.availableHours||0),0);
             const bkH=(asgn[d.clickupUserId]||[]).reduce((s,t)=>s+mh(t.time_estimate),0);
@@ -667,7 +807,7 @@ export default function App(){
         </div>
       </div>
 
-      <Drawer open={drawer.open} designer={drawer.designer} day={drawer.day} cap={dCap} tasks={dTasks} onClose={()=>setDrawer({open:false,designer:null,day:null})} onReassign={doReassign} onUnassign={doUnassign}/>
+      <Drawer open={drawer.open} designer={drawer.designer} day={drawer.day} cap={dCap} tasks={dTasks} designers={designers} onClose={()=>setDrawer({open:false,designer:null,day:null})} onReassign={doReassign} onUnassign={doUnassign}/>
       {ops&&<OpsGuide onClose={()=>setOps(false)}/>}
     </div>
   );
