@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { fetchClickUpTasks, fetchNotionCapacity, fetchNotionSkills, assignTaskInClickUp, unassignTaskInClickUp, NOTION_TOKEN } from "./api.js";
-
-const API_READY = NOTION_TOKEN !== "YOUR_NOTION_TOKEN_HERE";
+import {
+  fetchClickUpTasks,
+  fetchNotionCapacity,
+  fetchNotionSkills,
+  assignTaskInClickUp,
+  unassignTaskInClickUp,
+  API_READY,
+} from "./api.js";
 
 const B={
   magenta:"#ed2290",tangerine:"#faa41a",royalBlue:"#2e4ea2",black:"#0d0d0d",
