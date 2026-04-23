@@ -56,17 +56,27 @@ export default async function handler(req, res) {
   }
 }
 
+// ─── Extract a calendar date string (YYYY-MM-DD) from a Notion date property.
+// Notion returns date-only entries as "2026-05-04" and datetime entries as
+// "2026-05-04T00:00:00.000+10:00". We always want just the YYYY-MM-DD part.
+// Using substring(0, 10) is safe for both formats and preserves the calendar
+// date as stored in Notion (i.e. the local date, not a UTC conversion).
+function normaliseDateStart(prop) {
+  const start = prop?.date?.start;
+  if (!start) return null;
+  return start.substring(0, 10); // "2026-05-04" from both date-only and datetime formats
+}
+
 function normaliseRow(page) {
   const p = page.properties;
   const getText   = prop => prop?.title?.[0]?.plain_text || prop?.rich_text?.[0]?.plain_text || "";
-  const getDate   = prop => prop?.date?.start || null;
   const getSelect = prop => prop?.select?.name || null;
   const getNumber = prop => prop?.number ?? 0;
 
   return {
     designer:       getText(p["Designer"]),
     clickupUserId:  getText(p["ClickUp User ID"]),
-    date:           getDate(p["Date"]),
+    date:           normaliseDateStart(p["Date"]),
     dayOfWeek:      getSelect(p["Day of Week"]),
     availableHours: getNumber(p["Available Hours"]),
     status:         getSelect(p["Status"]) || "Unavailable",
