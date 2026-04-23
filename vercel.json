@@ -1,22 +1,23 @@
 {
+  "functions": {
+    "api/clickup-tasks.js": { "maxDuration": 30 }
+  },
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        {
-          "key": "X-Frame-Options",
-          "value": "ALLOWALL"
-        },
-        {
-          "key": "Content-Security-Policy",
-          "value": "frame-ancestors *"
-        }
+        { "key": "X-Frame-Options", "value": "ALLOWALL" },
+        { "key": "Content-Security-Policy", "value": "frame-ancestors *" }
       ]
     }
   ],
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
