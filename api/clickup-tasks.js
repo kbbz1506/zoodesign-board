@@ -16,6 +16,18 @@ const STAGE_DL_FIELD_ID  = "d3eaa57c-091b-47f6-bc39-b12eab4a32a0";
 const CLIENT_FIELD_ID    = "6fd9559e-5e7b-4db1-ba64-e2d0565957e9";
 const SERVICES_FIELD_ID  = "b861a06b-323c-476e-9cc3-84ca1f70aa1c";
 
+// ─── Retry helper — retries on 502 Bad Gateway only ──────────
+async function fetchWithRetry(url, options, retries = 3) {
+  let lastRes;
+  for (let i = 0; i < retries; i++) {
+    lastRes = await fetch(url, options);
+    if (lastRes.ok || lastRes.status !== 502) return lastRes; // success or non-502 error — stop
+    // 502 only: wait with exponential backoff before retrying
+    if (i < retries - 1) await new Promise(r => setTimeout(r, 600 * (i + 1)));
+  }
+  return lastRes; // return last response after exhausting retries
+}
+
 export default async function handler(req, res) {
   // CORS headers — allow requests from any origin (our Vercel frontend)
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -34,13 +46,15 @@ export default async function handler(req, res) {
 
     while (hasMore) {
       const url = `https://api.clickup.com/api/v2/list/${CLICKUP_LIST_ID}/task?include_closed=true&subtasks=false&page=${page}`;
-      const response = await fetch(url, {
+      const response = await fetchWithRetry(url, {
         headers: { Authorization: CLICKUP_TOKEN },
       });
 
       if (!response.ok) {
         const text = await response.text();
-        return res.status(response.status).json({ error: `ClickUp error: ${text}` });
+        // Strip any HTML from gateway error messages so the frontend can display them cleanly
+        const clean = text.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
+        return res.status(response.status).json({ error: `ClickUp error (${response.status}): ${clean}` });
       }
 
       const data = await response.json();
