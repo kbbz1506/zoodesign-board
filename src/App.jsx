@@ -445,8 +445,77 @@ function OpsGuide({onClose}){
   );
 }
 
-// ─── MAIN APP ─────────────────────────────────────────────────
+// ─── PASSWORD GATE ────────────────────────────────────────────
+function PasswordGate({onUnlock}){
+  const[pw,setPw]=useState("");
+  const[err,setErr]=useState(false);
+  const[shake,setShake]=useState(false);
+  const expected=import.meta.env.VITE_BOARD_PASSWORD;
+
+  const submit=(e)=>{
+    e.preventDefault();
+    if(pw===expected&&expected){
+      try{localStorage.setItem("zd_board_auth","1");}catch{}
+      onUnlock();
+    }else{
+      setErr(true);
+      setShake(true);
+      setTimeout(()=>setShake(false),400);
+    }
+  };
+
+  return(
+    <div style={{height:"100vh",width:"100vw",background:B.black,color:B.tp,fontFamily:"'Poppins',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        @keyframes gateShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+        @keyframes gateFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+      `}</style>
+      <div style={{width:380,padding:"36px 34px",background:B.s2,border:`1px solid ${B.border}`,borderRadius:14,animation:shake?"gateShake 0.4s":"gateFade 0.4s ease-out",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+        <div style={{height:3,background:G,borderRadius:2,marginBottom:22}}/>
+        <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:4}}>
+          <span style={{fontSize:22,fontFamily:"'Poppins',sans-serif",fontWeight:900,background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",letterSpacing:"-0.02em"}}>ZOO</span>
+          <span style={{fontSize:22,fontFamily:"'Poppins',sans-serif",fontWeight:900,color:B.tp,letterSpacing:"-0.02em"}}>DESIGN</span>
+        </div>
+        <div style={{fontSize:10,color:B.ts,fontFamily:"'Poppins',sans-serif",fontWeight:600,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:26}}>Studio Board</div>
+        <form onSubmit={submit}>
+          <label style={{display:"block",fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:7}}>Access Password</label>
+          <input
+            type="password"
+            value={pw}
+            autoFocus
+            onChange={e=>{setPw(e.target.value);setErr(false);}}
+            style={{width:"100%",background:"#0d0d0d",border:`1px solid ${err?B.red:B.b2}`,color:B.tp,borderRadius:8,padding:"11px 13px",fontSize:13,fontFamily:"'Poppins',sans-serif",fontWeight:500,letterSpacing:"0.05em",transition:"border 0.15s"}}
+            onFocus={e=>{if(!err)e.currentTarget.style.borderColor=B.magenta+"88";}}
+            onBlur={e=>{if(!err)e.currentTarget.style.borderColor=B.b2;}}
+          />
+          {err&&<div style={{fontSize:10,color:B.red,fontFamily:"'Poppins',sans-serif",fontWeight:600,marginTop:7}}>Incorrect password</div>}
+          <button
+            type="submit"
+            style={{width:"100%",marginTop:18,padding:"11px 0",background:G,border:"none",color:"#000",borderRadius:8,fontFamily:"'Poppins',sans-serif",fontWeight:800,fontSize:11,letterSpacing:"0.14em",textTransform:"uppercase",cursor:"pointer",transition:"transform 0.1s"}}
+            onMouseDown={e=>e.currentTarget.style.transform="scale(0.98)"}
+            onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+            onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+          >Unlock Board</button>
+        </form>
+        <div style={{marginTop:22,paddingTop:16,borderTop:`1px solid ${B.border}`,fontSize:9,color:B.tm,fontFamily:"'Poppins',sans-serif",textAlign:"center",lineHeight:1.5}}>Internal tool · ZOODESIGN Studio</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── APP ROOT (auth wrapper) ──────────────────────────────────
 export default function App(){
+  const[authed,setAuthed]=useState(()=>{
+    try{return localStorage.getItem("zd_board_auth")==="1";}catch{return false;}
+  });
+  if(!authed)return <PasswordGate onUnlock={()=>setAuthed(true)}/>;
+  return <StudioBoard/>;
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────
+function StudioBoard(){
   // Week state — default to current week's Monday
   const[ws,setWs]=useState(()=>mon(new Date()));
   // Task data
