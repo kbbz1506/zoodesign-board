@@ -6,11 +6,6 @@ const CLICKUP_TOKEN   = process.env.CLICKUP_TOKEN;
 const CLICKUP_LIST_ID = "901611810331";
 const EXCLUDED_STATUSES = ["completed", "approved - studio finalise"];
 
-const CLIENT_OPTION_MAP = {
-  0:"BBC", 1:"BUNNINGS", 2:"COMM BANK", 3:"PROLOGICAL",
-  4:"TOGA", 5:"TWO BLIND MICE", 6:"WARRIGAL",
-};
-
 const DESIGNER_FIELD_ID  = "b4754fc3-6625-4adb-a91c-37b48dab518d";
 const STAGE_DL_FIELD_ID  = "d3eaa57c-091b-47f6-bc39-b12eab4a32a0";
 const CLIENT_FIELD_ID    = "6fd9559e-5e7b-4db1-ba64-e2d0565957e9";
@@ -91,9 +86,17 @@ function normaliseTask(t) {
   const designerUserId = designerUsers[0]?.id ? String(designerUsers[0].id) : null;
   const designerName   = designerUsers[0]?.username || null;
 
-  const clientField  = getField(CLIENT_FIELD_ID);
-  const clientIndex  = clientField?.value ?? null;
-  const client       = clientIndex !== null ? (CLIENT_OPTION_MAP[clientIndex] || "Unknown") : "Unknown";
+  // Client — resolved dynamically from the dropdown's own options so newly
+  // added clients work automatically (value may be an orderindex or option id)
+  const clientField = getField(CLIENT_FIELD_ID);
+  const clientVal   = clientField?.value;
+  let client = "Unknown";
+  if (clientVal !== null && clientVal !== undefined && clientVal !== "") {
+    const opts = clientField?.type_config?.options || [];
+    const opt = opts.find(o => o.id === clientVal)
+             || opts.find(o => o.orderindex === Number(clientVal));
+    if (opt?.name) client = String(opt.name).trim();
+  }
 
   const servicesField   = getField(SERVICES_FIELD_ID);
   const servicesOptions = servicesField?.type_config?.options || [];
@@ -109,21 +112,25 @@ function normaliseTask(t) {
   // ZOO WIP Update — free text status note from the studio
   const zooWip = getField(ZOO_WIP_FIELD_ID)?.value || "";
 
-  // Studio Bookings — board-owned JSON: [{designerId,date:"YYYY-MM-DD",hours}]
+  // Studio Bookings — board-owned JSON. Two supported shapes:
+  //   v1: [{designerId,date,hours}, ...]
+  //   v2: {"v":2,"complete":bool,"bookings":[...]} — complete = manual
+  //       "fully booked" override set by the studio manager
   let bookings = [];
+  let bookingComplete = false;
   const rawBookings = getField(BOOKINGS_FIELD_ID)?.value;
   if (rawBookings) {
     try {
       const parsed = JSON.parse(rawBookings);
-      if (Array.isArray(parsed)) {
-        bookings = parsed
-          .filter(b => b && b.designerId && b.date && Number(b.hours) > 0)
-          .map(b => ({
-            designerId: String(b.designerId),
-            date: String(b.date).substring(0, 10),
-            hours: Math.round(Number(b.hours) * 10) / 10,
-          }));
-      }
+      const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.bookings) ? parsed.bookings : []);
+      if (!Array.isArray(parsed)) bookingComplete = !!parsed?.complete;
+      bookings = arr
+        .filter(b => b && b.designerId && b.date && Number(b.hours) > 0)
+        .map(b => ({
+          designerId: String(b.designerId),
+          date: String(b.date).substring(0, 10),
+          hours: Math.round(Number(b.hours) * 10) / 10,
+        }));
     } catch { /* malformed JSON — treat as no bookings */ }
   }
 
@@ -151,6 +158,7 @@ function normaliseTask(t) {
     assignedTo:    designerUserId,
     zooWip,
     bookings,
+    bookingComplete,
     projectEstHours,
     description,
     assignees:     (t.assignees || []).map(a => ({ id: String(a.id), username: a.username })),
