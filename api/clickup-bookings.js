@@ -52,6 +52,7 @@ export default async function handler(req, res) {
     dueDateMs,       // set task due date (ms) — only when manager explicitly changes it
     assigneeAdd,     // userId to formally assign in ClickUp
     assigneeRem,     // userId(s) to remove — string or array
+    complete,        // manual "fully booked" override (bool)
   } = req.body;
 
   if (!taskId) return res.status(400).json({ error: "taskId required" });
@@ -72,9 +73,10 @@ export default async function handler(req, res) {
 
   const done = [];
   try {
-    // 1. Studio Bookings JSON (board-owned)
+    // 1. Studio Bookings JSON (board-owned) — v2 shape carries the manual
+    //    "fully booked" override alongside the booking entries
     await cu(`/task/${taskId}/field/${BOOKINGS_FIELD_ID}`, "POST", {
-      value: clean.length ? JSON.stringify(clean) : "",
+      value: (clean.length || complete) ? JSON.stringify({ v: 2, complete: !!complete, bookings: clean }) : "",
     });
     done.push("bookings");
 
