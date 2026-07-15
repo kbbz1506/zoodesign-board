@@ -56,6 +56,22 @@ export async function reassignTaskInClickUp(taskId, fromUserId, toUserId, dueDat
   return res.json();
 }
 
+// Save production bookings + task details in one call.
+// payload: { taskId, bookings:[{designerId,date,hours}], summary,
+//            leadAdd, leadRem, dueDateMs, assigneeAdd, assigneeRem }
+export async function saveTaskDetails(payload) {
+  const res = await fetch("/api/clickup-bookings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `Save failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 // ─── NOTION ──────────────────────────────────────────────────
 
 export async function fetchNotionCapacity(weekStart, weekEnd) {
