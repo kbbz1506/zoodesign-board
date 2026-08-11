@@ -27,6 +27,10 @@ const B={
 };
 const G=B.G;
 const CC={BBC:"#2e4ea2",BUNNINGS:"#22c55e","COMM BANK":"#faa41a",PROLOGICAL:"#f97316",TOGA:"#06b6d4","TWO BLIND MICE":"#8b5cf6",WARRIGAL:"#ec4899"};
+// Any client not in CC gets a stable colour from this palette (hash of name)
+// — new ClickUp clients are colour-coded automatically, no code changes needed
+const CPAL=["#2e4ea2","#22c55e","#faa41a","#f97316","#06b6d4","#8b5cf6","#ec4899","#12a594","#e5484d","#0091ff","#6647f0","#30a46c"];
+function ccFor(c){if(!c)return B.magenta;if(CC[c])return CC[c];let h=0;for(const ch of c)h=(h*31+ch.charCodeAt(0))>>>0;return CPAL[h%CPAL.length];}
 const PC={urgent:"#ef4444",high:"#faa41a",normal:"#22c55e",low:"#4b5563"};
 const RC={"Graphic Designer":"#ed2290","Motion Designer":"#2e4ea2","Content Producer":"#faa41a","Studio Manager":"#8b5cf6"};
 const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday"];
@@ -35,9 +39,9 @@ const SMAP={"Brand & Corporate":["Brand & Identity"],"Canva Solutions":["Canva D
 
 // Statuses EXCLUDED from unassigned view — brief required intentionally NOT in this list
 // so forecasting tasks appear even before the brief is finalised
-const EXCLUDED_STATUSES=["completed","approved - studio finalise"];
+const EXCLUDED_STATUSES=["converted (forecasts only)","delivered","closed - hide (dont use)","approved - studio finalise"];
 
-const SO=["brief required","prod action rq","prod in progress","internal review","external review","approved - studio finalise","blocked","completed"];
+const SO=["forecast","studio mgmt rq","prod action rq","in progress","blocked","internal review","ready for client","external review","approved - studio finalise","delivered","converted (forecasts only)","brief required","prod in progress","completed"];
 
 const OPS=[
   {icon:"📋",title:"Required ClickUp fields",color:"#ed2290",items:[
@@ -113,6 +117,21 @@ function bookingsFor(t){
   return[];
 }
 function bookedTotal(t){return Math.round(bookingsFor(t).reduce((s,b)=>s+b.hours,0)*10)/10;}
+// Booking target = Project Est (Time/Total) when set, else the time estimate.
+// Coverage = hours already TRACKED in ClickUp + hours BOOKED on the board.
+// A task "needs booking" until coverage reaches the target — unless the
+// studio manager manually marks it Fully Booked (override), e.g. when the
+// estimate includes studio/PM time that shouldn't be booked to designers.
+function targetHours(t){return t.projectEstHours||mh(t.time_estimate)||0;}
+function trackedHours(t){return mh(t.time_spent||0);}
+function remainingHours(t){return Math.max(Math.round((targetHours(t)-trackedHours(t)-bookedTotal(t))*10)/10,0);}
+function needsBooking(t){
+  if(EXCLUDED_STATUSES.includes(t.status))return false;
+  if(t.bookingComplete)return false;                 // manual override
+  if(remainingHours(t)>0)return true;                // coverage short of target
+  // no estimate at all and nothing planned — still needs attention
+  return targetHours(t)===0&&bookedTotal(t)===0&&!t.assignedTo;
+}
 // Human-readable Booking Summary written back to ClickUp
 function summaryText(bookings,designers){
   const nm=id=>designers.find(d=>d.clickupUserId===String(id))?.designer||`User ${id}`;
@@ -199,9 +218,19 @@ function Av({name,role,size=32}){
 }
 
 function SPill({status}){
-  const m={"brief required":{bg:"rgba(124,58,237,0.09)",c:"#7c3aed"},"prod action rq":{bg:"rgba(250,164,26,0.14)",c:"#c77c00"},"prod in progress":{bg:"rgba(237,34,144,0.1)",c:B.magenta},"internal review":{bg:"rgba(22,163,74,0.1)",c:B.green},"external review":{bg:"rgba(22,163,74,0.1)",c:"#15803d"},"approved - studio finalise":{bg:"rgba(0,0,0,0.05)",c:"#948d84"},"blocked":{bg:"rgba(220,38,38,0.09)",c:B.red}};
+  const m={"brief required":{bg:"rgba(124,58,237,0.09)",c:"#7c3aed"},"prod action rq":{bg:"rgba(250,164,26,0.14)",c:"#c77c00"},"prod in progress":{bg:"rgba(237,34,144,0.1)",c:B.magenta},"internal review":{bg:"rgba(22,163,74,0.1)",c:B.green},"external review":{bg:"rgba(22,163,74,0.1)",c:"#15803d"},"approved - studio finalise":{bg:"rgba(0,0,0,0.05)",c:"#948d84"},"blocked":{bg:"rgba(220,38,38,0.09)",c:B.red},"forecast":{bg:"rgba(46,78,162,0.09)",c:B.royalBlue},"studio mgmt rq":{bg:"rgba(124,58,237,0.09)",c:"#7c3aed"},"in progress":{bg:"rgba(237,34,144,0.1)",c:B.magenta},"ready for client":{bg:"rgba(22,163,74,0.1)",c:B.green},"delivered":{bg:"rgba(0,0,0,0.05)",c:"#948d84"},"converted (forecasts only)":{bg:"rgba(0,0,0,0.05)",c:"#948d84"}};
   const s=m[status]||{bg:"rgba(0,0,0,0.04)",c:"#948d84"};
   return <span style={{fontSize:9,padding:"2px 8px",borderRadius:20,background:s.bg,color:s.c,fontFamily:"'Poppins',sans-serif",fontWeight:600,textTransform:"uppercase",whiteSpace:"nowrap"}}>{status}</span>;
+}
+
+// Forecast badge — shown on tasks with taskType "forecast" (from the API's
+// custom_item_id mapping). Confidence label comes from the Forecast Confidence
+// dropdown in ClickUp, set automatically by the daily forecast sweep.
+const FCONF_C={"Early Discussions":"#6647f0","Quoting & Scoping":"#3e63dd","Compiling Assets":"#0091ff","Brief is ready":"#16a34a"};
+function FPill({task}){
+  if(task.taskType!=="forecast")return null;
+  const c=FCONF_C[task.forecastConfidence]||B.royalBlue;
+  return <span style={{fontSize:8,color:c,background:`${c}14`,border:`1px solid ${c}44`,padding:"2px 7px",borderRadius:10,fontFamily:"'Poppins',sans-serif",fontWeight:700,whiteSpace:"nowrap"}}>FORECAST{task.forecastConfidence?` · ${task.forecastConfidence}`:""}</span>;
 }
 
 function CBar({available,committed}){
@@ -242,7 +271,12 @@ function DayCell({day,cap,committed,taskCount,isToday,onClick}){
   else if(partAvail) bg="#fdfaf2";                // slight warm tint for partial
   else bg="#ffffff";                              // available — clean white
 
-  const bdr=hov&&!unavail
+  // A cell is clickable whenever it's a working day OR has tasks booked on it
+  // — so you can always open a designer's day to review what's scheduled,
+  // even if no capacity row exists for that date.
+  const clickable=!unavail||isPH||taskCount>0;
+
+  const bdr=hov&&clickable
     ? B.magenta
     : isToday ? `${B.magenta}66`
     : over ? `${B.red}66`
@@ -254,8 +288,8 @@ function DayCell({day,cap,committed,taskCount,isToday,onClick}){
   const dayLabelColor=unavail&&!isPH?"#d4cfc7":isToday?B.magenta:!unavail?"#948d84":"#c9c4bc";
 
   return(
-    <div onClick={()=>{if(!unavail||isPH)onClick();}} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{background:bg,borderRadius:6,padding:"8px 9px",minHeight:82,border:`1px solid ${bdr}`,cursor:unavail&&!isPH?"default":"pointer",transition:"border-color 0.15s,background 0.15s",position:"relative",overflow:"hidden"}}>
+    <div onClick={()=>{if(clickable)onClick();}} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{background:bg,borderRadius:6,padding:"8px 9px",minHeight:82,border:`1px solid ${bdr}`,cursor:clickable?"pointer":"default",transition:"border-color 0.15s,background 0.15s",position:"relative",overflow:"hidden"}}>
       {isToday&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:G}}/>}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5,marginTop:isToday?4:0}}>
         <div>
@@ -271,14 +305,17 @@ function DayCell({day,cap,committed,taskCount,isToday,onClick}){
       {!unavail&&!isPH&&avail>0&&<CBar available={avail} committed={committed}/>}
       {taskCount>0&&(
         <div style={{marginTop:5,display:"flex",alignItems:"center",gap:4}}>
-          <div style={{width:6,height:6,borderRadius:"50%",background:over?B.red:B.magenta}}/>
-          <span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:600,color:over?B.red:B.magenta}}>
-            {taskCount} task{taskCount!==1?"s":""}
+          <div style={{width:6,height:6,borderRadius:"50%",background:over||(unavail&&!isPH)?B.red:B.magenta}}/>
+          <span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:600,color:over||(unavail&&!isPH)?B.red:B.magenta}}>
+            {taskCount} task{taskCount!==1?"s":""} · {hl(committed)}
           </span>
         </div>
       )}
-      {unavail&&!isPH&&(
+      {unavail&&!isPH&&taskCount===0&&(
         <div style={{fontSize:11,color:"#b3ada4",fontFamily:"'Poppins',sans-serif",marginTop:6,textAlign:"center"}}>—</div>
+      )}
+      {unavail&&!isPH&&taskCount>0&&(
+        <div style={{fontSize:8,color:B.red,fontFamily:"'Poppins',sans-serif",fontWeight:600,marginTop:2}}>⚠ booked, no capacity</div>
       )}
     </div>
   );
@@ -286,7 +323,7 @@ function DayCell({day,cap,committed,taskCount,isToday,onClick}){
 
 function DTask({task,allD,curId,onR,onU,onOpen,idx}){
   const[exp,setExp]=useState(false),[nd,setNd]=useState(""),[ndate,setNdate]=useState("");
-  const cc=CC[task.client]||B.magenta,sdl=task.stage_deadline?new Date(Number(task.stage_deadline)):null;
+  const cc=ccFor(task.client),sdl=task.stage_deadline?new Date(Number(task.stage_deadline)):null;
   const hasBookings=Array.isArray(task.bookings)&&task.bookings.length>0;
   const dayH=task._bh!==undefined?task._bh:mh(task.time_estimate);
   return(
@@ -305,7 +342,7 @@ function DTask({task,allD,curId,onR,onU,onOpen,idx}){
             {hasBookings&&<><span style={{color:B.tm}}>·</span><span style={{fontSize:9,color:B.royalBlue,fontFamily:"'Poppins',sans-serif",fontWeight:700}}>📅 {hl(bookedTotal(task))} total</span></>}
             {sdl&&<><span style={{color:B.tm}}>·</span><span style={{fontSize:9,color:B.tangerine,fontFamily:"'Poppins',sans-serif",fontWeight:600}}>DL {fs(sdl)}</span></>}
           </div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:4}}><SPill status={task.status}/>{hasBookings&&<span style={{fontSize:8,color:B.royalBlue,background:"rgba(46,78,162,0.08)",border:`1px solid ${B.royalBlue}33`,padding:"2px 6px",borderRadius:10,fontFamily:"'Poppins',sans-serif",fontWeight:700}}>MULTI-DAY</span>}{task.services?.map(s=><span key={s} style={{fontSize:8,color:B.tm,background:"rgba(0,0,0,0.04)",padding:"2px 5px",borderRadius:4,fontFamily:"'Poppins',sans-serif"}}>{s}</span>)}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4}}><SPill status={task.status}/><FPill task={task}/>{hasBookings&&<span style={{fontSize:8,color:B.royalBlue,background:"rgba(46,78,162,0.08)",border:`1px solid ${B.royalBlue}33`,padding:"2px 6px",borderRadius:10,fontFamily:"'Poppins',sans-serif",fontWeight:700}}>MULTI-DAY</span>}{task.services?.map(s=><span key={s} style={{fontSize:8,color:B.tm,background:"rgba(0,0,0,0.04)",padding:"2px 5px",borderRadius:4,fontFamily:"'Poppins',sans-serif"}}>{s}</span>)}</div>
         </div>
         {exp&&(
           <div style={{padding:"10px 12px",borderTop:`1px solid ${B.border}`}} onClick={e=>e.stopPropagation()}>
@@ -379,9 +416,10 @@ function Drawer({open,designer,day,cap,tasks,designers,onClose,onReassign,onUnas
   );
 }
 
-function TCard({task,designers,onAssign,isAssigning,onOpen}){
-  const[exp,setExp]=useState(false),[sd,setSd]=useState(""),[sdate,setSdate]=useState("");
-  const cc=CC[task.client]||B.magenta,sdl=task.stage_deadline?new Date(Number(task.stage_deadline)):null;
+function TCard({task,designers,onOpen}){
+  const[exp,setExp]=useState(false);
+  const cc=ccFor(task.client),sdl=task.stage_deadline?new Date(Number(task.stage_deadline)):null;
+  const booked=bookedTotal(task),tgt=targetHours(task),rem=remainingHours(task),trk=trackedHours(task);
   const dlU=sdl&&(sdl-Date.now())<3*24*3600*1000;
   const isBriefReq=task.status==="brief required";
   const sm=d=>{const req=(task.services||[]).flatMap(s=>SMAP[s]||[]);if(!req.length)return"none";const ns=d.notSuitedFor&&task.services.some(s=>d.notSuitedFor.toLowerCase().includes(s.toLowerCase().replace(" & ","").split(" ")[0]));if(ns)return"blocked";const m=req.filter(r=>d.skills?.includes(r));return m.length===req.length?"full":m.length>0?"partial":"none";};
@@ -394,10 +432,11 @@ function TCard({task,designers,onAssign,isAssigning,onOpen}){
           <span style={{fontSize:12,color:B.tp,fontFamily:"'Poppins',sans-serif",fontWeight:500,lineHeight:1.35,flex:1}}>{task.name}</span>
           <span style={{color:B.tm,fontSize:10}}>{exp?"▲":"▼"}</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:7}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:7,flexWrap:"wrap"}}>
           <span style={{fontSize:10,color:cc,fontFamily:"'Poppins',sans-serif",fontWeight:700}}>{task.client}</span>
           <span style={{color:B.tm}}>·</span>
-          <span style={{fontSize:10,color:B.ts,fontFamily:"'Poppins',sans-serif"}}>{hl(mh(task.time_estimate))}</span>
+          <span style={{fontSize:10,color:B.ts,fontFamily:"'Poppins',sans-serif"}}>{tgt?hl(tgt):hl(mh(task.time_estimate))} total</span>
+          {(booked>0||trk>0)&&<><span style={{color:B.tm}}>·</span><span style={{fontSize:10,color:"#c77c00",fontFamily:"'Poppins',sans-serif",fontWeight:700}}>{hl(rem)} to book</span></>}
         </div>
         {sdl&&(
           <div style={{display:"inline-flex",alignItems:"center",gap:6,background:dlU?"rgba(239,68,68,0.1)":"rgba(250,164,26,0.08)",border:`1px solid ${dlU?B.red+"55":B.tangerine+"44"}`,borderRadius:20,padding:"3px 10px",marginBottom:7}}>
@@ -406,7 +445,7 @@ function TCard({task,designers,onAssign,isAssigning,onOpen}){
           </div>
         )}
         <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}>
-          <SPill status={task.status}/>
+          <SPill status={task.status}/><FPill task={task}/>
           {isBriefReq&&<span style={{fontSize:8,color:"#7c3aed",background:"rgba(139,92,246,0.1)",padding:"2px 7px",borderRadius:10,fontFamily:"'Poppins',sans-serif",fontWeight:600}}>Forecast only</span>}
           {task.services?.map(s=><span key={s} style={{fontSize:8,color:B.tm,background:"rgba(0,0,0,0.04)",padding:"2px 6px",borderRadius:4,fontFamily:"'Poppins',sans-serif"}}>{s}</span>)}
         </div>
@@ -426,29 +465,22 @@ function TCard({task,designers,onAssign,isAssigning,onOpen}){
               </div>
             );})}
           </div>
-          <div style={{fontSize:9,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:7}}>Assign Task</div>
-          <div style={{display:"flex",gap:6,marginBottom:7}}>
-            <select value={sd} onChange={e=>setSd(e.target.value)} style={{flex:1,background:"#fff",border:`1px solid ${B.b2}`,color:B.ts,borderRadius:6,padding:"6px 8px",fontSize:11,fontFamily:"'Poppins',sans-serif",cursor:"pointer"}}>
-              <option value="">Select designer…</option>
-              {designers.map(d=><option key={d.clickupUserId} value={d.clickupUserId}>{d.designer}</option>)}
-            </select>
-            <div style={{flex:1}}>
-              <input type="date" value={sdate} onChange={e=>setSdate(e.target.value)} style={{width:"100%",background:"#fff",border:`1px solid ${B.b2}`,color:B.ts,borderRadius:6,padding:"6px 8px",fontSize:11,fontFamily:"'Poppins',sans-serif",cursor:"pointer"}}/>
-              <div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",marginTop:2}}>Sets ClickUp due date</div>
+          {tgt>0&&(
+            <div style={{marginBottom:10,background:"#fff",border:`1px solid ${B.border}`,borderRadius:8,padding:"9px 11px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                <span style={{fontSize:9,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase"}}>Coverage</span>
+                <span style={{fontSize:9,fontFamily:"'Poppins',sans-serif",fontWeight:800,color:rem>0?"#c77c00":B.green}}>{hl(Math.round((trk+booked)*10)/10)} / {hl(tgt)}</span>
+              </div>
+              <div style={{height:4,background:"#e8e5df",borderRadius:2,overflow:"hidden",marginBottom:6}}>
+                <div style={{height:"100%",width:`${Math.min(((trk+booked)/tgt)*100,100)}%`,background:G,borderRadius:2}}/>
+              </div>
+              <div style={{fontSize:9,color:B.ts,fontFamily:"'Poppins',sans-serif",lineHeight:1.6}}>
+                {hl(tgt)} target − {trk?hl(trk):"0h"} tracked − {booked?hl(booked):"0h"} booked = <b style={{color:rem>0?"#c77c00":B.green}}>{rem>0?`${hl(rem)} still to book`:"fully covered ✓"}</b>
+              </div>
             </div>
-          </div>
-          <button onClick={()=>{if(sd&&sdate){const d=designers.find(x=>x.clickupUserId===sd);onAssign(task.id,sd,sdate,d?.designer);}}} disabled={!sd||!sdate||isAssigning}
-            style={{width:"100%",padding:"9px 0",background:sd&&sdate?G:"#e8e5df",color:sd&&sdate?"#000":B.tm,border:"none",borderRadius:6,fontSize:11,fontFamily:"'Poppins',sans-serif",fontWeight:800,cursor:sd&&sdate?"pointer":"not-allowed"}}>
-            {isAssigning?"ASSIGNING…":"ASSIGN IN CLICKUP →"}
-          </button>
-          <p style={{fontSize:9,color:B.tm,margin:"4px 0 0",fontFamily:"'Poppins',sans-serif",textAlign:"center"}}>Sets Designer field + due date · Formal assignment still needed in ClickUp</p>
-          <div style={{display:"flex",alignItems:"center",gap:8,margin:"10px 0 8px"}}>
-            <div style={{flex:1,height:1,background:B.border}}/>
-            <span style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.08em"}}>OR</span>
-            <div style={{flex:1,height:1,background:B.border}}/>
-          </div>
-          <button onClick={()=>onOpen(task)} style={{width:"100%",padding:"8px 0",background:"rgba(46,78,162,0.06)",color:B.royalBlue,border:`1px solid ${B.royalBlue}44`,borderRadius:6,fontSize:10,fontFamily:"'Poppins',sans-serif",fontWeight:700,cursor:"pointer"}}>📅 PLAN MULTI-DAY BOOKINGS</button>
-          <p style={{fontSize:9,color:B.tm,margin:"4px 0 0",fontFamily:"'Poppins',sans-serif",textAlign:"center"}}>Split hours across dates &amp; designers for production projects</p>
+          )}
+          <button onClick={()=>onOpen(task)} style={{width:"100%",padding:"9px 0",background:G,color:"#000",border:"none",borderRadius:6,fontSize:11,fontFamily:"'Poppins',sans-serif",fontWeight:800,cursor:"pointer"}}>📅 PLAN BOOKINGS →</button>
+          <p style={{fontSize:9,color:B.tm,margin:"5px 0 0",fontFamily:"'Poppins',sans-serif",textAlign:"center",lineHeight:1.5}}>One booking row per designer per day — works for single-day tasks and multi-day productions. Saves to ClickUp and sets the lead Designer automatically.</p>
         </div>
       )}
     </div>
@@ -460,7 +492,7 @@ function TCard({task,designers,onAssign,isAssigning,onOpen}){
 // assignee + due date, editable multi-day bookings with live capacity
 // check, time tracked (read-only), and a direct ClickUp link.
 function TaskModal({task,designers,cap,flatTasks,onClose,onSave,saving}){
-  const cc=CC[task.client]||B.magenta;
+  const cc=ccFor(task.client);
   const sdl=task.stage_deadline?new Date(Number(task.stage_deadline)):null;
   const nm=id=>designers.find(d=>d.clickupUserId===String(id))?.designer||`User ${id}`;
 
@@ -471,6 +503,7 @@ function TaskModal({task,designers,cap,flatTasks,onClose,onSave,saving}){
   const curAssignee=task.assignees?.[0]?.id||"";
   const[assignee,setAssignee]=useState(curAssignee);
   const[descExp,setDescExp]=useState(false);
+  const[complete,setComplete]=useState(!!task.bookingComplete); // manual fully-booked override
 
   useEffect(()=>{const h=e=>{if(e.key==="Escape")onClose();};document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);},[onClose]);
 
@@ -505,7 +538,8 @@ function TaskModal({task,designers,cap,flatTasks,onClose,onSave,saving}){
     const payload={
       taskId:task.id,
       bookings:sorted,
-      summary:summaryText(sorted,designers),
+      summary:summaryText(sorted,designers)+(complete?"\n✓ Marked FULLY BOOKED by studio manager":""),
+      complete,
     };
     if(newLead&&newLead!==String(task.assignedTo||"")){
       payload.leadAdd=newLead;
@@ -535,7 +569,7 @@ function TaskModal({task,designers,cap,flatTasks,onClose,onSave,saving}){
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
-                <SPill status={task.status}/>
+                <SPill status={task.status}/><FPill task={task}/>
                 <span style={{fontSize:10,color:cc,fontFamily:"'Poppins',sans-serif",fontWeight:700}}>{task.client}</span>
                 {task.services?.map(s=><span key={s} style={{fontSize:8,color:B.tm,background:"rgba(0,0,0,0.04)",padding:"2px 6px",borderRadius:4,fontFamily:"'Poppins',sans-serif"}}>{s}</span>)}
               </div>
@@ -610,15 +644,37 @@ function TaskModal({task,designers,cap,flatTasks,onClose,onSave,saving}){
           <div style={{background:B.s2,border:`1px solid ${B.border}`,borderRadius:8,padding:"12px 14px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
               <div style={{...lbl,marginBottom:0}}>Production Bookings</div>
-              <div style={{fontSize:10,fontFamily:"'Poppins',sans-serif",fontWeight:800,color:totalTarget&&bookedH<totalTarget?"#c77c00":totalTarget&&bookedH>totalTarget?B.red:B.green}}>
-                {hl(bookedH)}{totalTarget?` / ${hl(totalTarget)} booked`:" booked"}
-              </div>
+              {complete&&<span style={{fontSize:9,padding:"3px 10px",borderRadius:20,background:"rgba(22,163,74,0.1)",color:B.green,fontFamily:"'Poppins',sans-serif",fontWeight:800}}>✓ FULLY BOOKED — MANUAL OVERRIDE</span>}
             </div>
-            {totalTarget>0&&(
-              <div style={{height:4,background:"#e8e5df",borderRadius:2,overflow:"hidden",marginBottom:10}}>
-                <div style={{height:"100%",width:`${Math.min((bookedH/totalTarget)*100,100)}%`,background:bookedH>totalTarget?B.red:G,borderRadius:2,transition:"width 0.3s"}}/>
-              </div>
-            )}
+            {totalTarget>0&&(()=>{
+              const covered=Math.round((tracked+bookedH)*10)/10;
+              const remCalc=Math.max(Math.round((totalTarget-covered)*10)/10,0);
+              return(
+                <div style={{background:"#fff",border:`1px solid ${B.border}`,borderRadius:8,padding:"9px 12px",marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                    <span style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase"}}>Coverage Calculator</span>
+                    <span style={{fontSize:10,fontFamily:"'Poppins',sans-serif",fontWeight:800,color:remCalc>0&&!complete?"#c77c00":B.green}}>{hl(covered)} / {hl(totalTarget)}</span>
+                  </div>
+                  <div style={{height:4,background:"#e8e5df",borderRadius:2,overflow:"hidden",marginBottom:7}}>
+                    <div style={{height:"100%",width:`${Math.min((covered/totalTarget)*100,100)}%`,background:covered>totalTarget?B.red:G,borderRadius:2,transition:"width 0.3s"}}/>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr auto",rowGap:2,fontSize:10,fontFamily:"'Poppins',sans-serif",color:B.ts}}>
+                    <span>Target (Project Est / estimate)</span><b style={{color:B.tp}}>{hl(totalTarget)}</b>
+                    <span>− Time already tracked in ClickUp</span><b style={{color:B.tp}}>{tracked?hl(tracked):"0h"}</b>
+                    <span>− Booked below</span><b style={{color:B.tp}}>{bookedH?hl(bookedH):"0h"}</b>
+                    <span style={{borderTop:`1px solid ${B.border}`,paddingTop:3}}>Still to book</span>
+                    <b style={{borderTop:`1px solid ${B.border}`,paddingTop:3,color:remCalc>0&&!complete?"#c77c00":B.green}}>{remCalc>0?hl(remCalc):"0h ✓"}</b>
+                  </div>
+                  {remCalc>0&&!complete&&(
+                    <button onClick={()=>setComplete(true)} style={{width:"100%",marginTop:8,padding:"7px 0",background:"rgba(22,163,74,0.07)",color:B.green,border:`1px solid ${B.green}44`,borderRadius:6,fontSize:10,fontFamily:"'Poppins',sans-serif",fontWeight:700,cursor:"pointer"}}>✓ MARK AS FULLY BOOKED ANYWAY</button>
+                  )}
+                  {complete&&(
+                    <button onClick={()=>setComplete(false)} style={{width:"100%",marginTop:8,padding:"7px 0",background:"rgba(220,38,38,0.05)",color:B.red,border:`1px solid ${B.red}33`,borderRadius:6,fontSize:10,fontFamily:"'Poppins',sans-serif",fontWeight:700,cursor:"pointer"}}>↩ REMOVE OVERRIDE — NEEDS MORE BOOKING</button>
+                  )}
+                  {remCalc>0&&!complete&&<div style={{fontSize:8,color:B.tm,fontFamily:"'Poppins',sans-serif",marginTop:5,lineHeight:1.5}}>Use the override when the target includes studio/PM time you don't want booked to designers. Saved with the task — it drops off the Needs Booking list.</div>}
+                </div>
+              );
+            })()}
             {rows.length===0&&<div style={{fontSize:10,color:B.tm,fontFamily:"'Poppins',sans-serif",fontStyle:"italic",marginBottom:8}}>No bookings yet — add days below to build the production schedule.</div>}
             {rows.map((r,idx)=>{
               const chk=rowCheck(r,idx);
@@ -770,7 +826,6 @@ function StudioBoard(){
   const[cap,setCap]=useState([]);
   const[designers,setDesigners]=useState(DESIGNERS); // starts with hardcoded, replaced by Notion
   // UI state
-  const[aId,setAId]=useState(null);
   const[loading,setLoading]=useState(false);
   const[loadError,setLoadError]=useState(null);
   const[toast,setToast]=useState(null);
@@ -847,33 +902,6 @@ function StudioBoard(){
 
   // Load on mount and whenever the week changes
   useEffect(()=>{loadData();},[loadData]);
-
-  // ── ASSIGN ─────────────────────────────────────────────────
-  const doAssign=async(tid,uid,dateStr,dName)=>{
-    setAId(tid);
-    const task=ua.find(t=>t.id===tid);
-    if(!task){setAId(null);return;}
-    const dm=String(lms(dateStr));
-
-    // Optimistic update — move task immediately so UI feels instant
-    setUa(p=>p.filter(t=>t.id!==tid));
-    setAsgn(p=>({...p,[uid]:[...(p[uid]||[]),{...task,due_date:dm,assignedTo:uid}]}));
-
-    if(API_READY){
-      try{
-        await assignTaskInClickUp(tid, uid, Number(dm));
-        showToast(`✓ ${dName} assigned in ClickUp — complete formal task assignment there too.`);
-      } catch(err){
-        // Roll back optimistic update on failure
-        setUa(p=>[task,...p]);
-        setAsgn(p=>({...p,[uid]:(p[uid]||[]).filter(t=>t.id!==tid)}));
-        showToast(`Assignment failed: ${err.message}`,"error");
-      }
-    } else {
-      showToast(`✓ ${dName} assigned (demo mode — not saved to ClickUp).`);
-    }
-    setAId(null);
-  };
 
   // ── REASSIGN ───────────────────────────────────────────────
   const doReassign=async(task,from,to,dateStr)=>{
@@ -956,19 +984,22 @@ function StudioBoard(){
   // booked designer's row, not just the lead's, so compute from bookings.
   const flatA=Object.values(asgn).flat();
 
-  // Filter unassigned — exclude completed and approved only
-  const filt=ua.filter(t=>{
-    if(EXCLUDED_STATUSES.includes(t.status))return false;
+  // NEEDS BOOKING — any task (assigned or not) whose booked hours haven't
+  // reached the target (Project Est, falling back to time estimate).
+  // Partially booked productions stay here until fully scheduled.
+  const pool=[...ua,...flatA].filter(needsBooking);
+  const filt=pool.filter(t=>{
     if(fSt!=="all"&&t.status!==fSt)return false;
     if(fCl!=="all"&&t.client!==fCl)return false;
     if(srch&&!t.name.toLowerCase().includes(srch.toLowerCase()))return false;
     return true;
   });
 
-  const allCl=[...new Set(ua.filter(t=>!EXCLUDED_STATUSES.includes(t.status)).map(t=>t.client).filter(Boolean))];
-  const allSt=[...new Set(ua.filter(t=>!EXCLUDED_STATUSES.includes(t.status)).map(t=>t.status))].sort((a,b)=>SO.indexOf(a)-SO.indexOf(b));
+  const allCl=[...new Set(pool.map(t=>t.client).filter(Boolean))];
+  const allSt=[...new Set(pool.map(t=>t.status))].sort((a,b)=>SO.indexOf(a)-SO.indexOf(b));
   const navW=dir=>{const d=new Date(ws);d.setDate(d.getDate()+dir*7);setWs(d);};
-  const ph=ua.filter(t=>!EXCLUDED_STATUSES.includes(t.status)).reduce((s,t)=>s+mh(t.time_estimate),0);
+  // Hours still to be scheduled across everything that needs booking
+  const ph=pool.reduce((s,t)=>s+(remainingHours(t)||(!t.assignedTo&&bookedTotal(t)===0?mh(t.time_estimate):0)),0);
 
   // Drawer tasks: any task with a booking for this designer on this day
   // (bookings-aware — includes multi-day tasks led by another designer).
@@ -1018,7 +1049,7 @@ function StudioBoard(){
           <div style={{width:1,height:26,background:B.border}}/>
           <div>
             <div style={{fontSize:9,color:"#948d84",fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Studio Board</div>
-            <div style={{fontSize:8,color:"#a39c93",fontFamily:"'Poppins',sans-serif"}}>{filt.length} unassigned · {ph.toFixed(1)}h pending</div>
+            <div style={{fontSize:8,color:"#a39c93",fontFamily:"'Poppins',sans-serif"}}>{filt.length} to book · {ph.toFixed(1)}h to schedule</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:9}}>
@@ -1034,7 +1065,7 @@ function StudioBoard(){
           <div style={{display:"flex",background:"#fff",borderRadius:8,padding:3,gap:2}}>
             {["board","unassigned"].map(t=>(
               <button key={t} onClick={()=>setTab(t)} style={{background:tab===t?G:"none",border:"none",cursor:"pointer",padding:"5px 13px",borderRadius:6,fontSize:10,fontFamily:"'Poppins',sans-serif",fontWeight:700,color:tab===t?"#000":B.tm,transition:"all 0.15s"}}>
-                {t==="unassigned"?<>UNASSIGNED{filt.length>0&&<span style={{background:tab==="unassigned"?"rgba(0,0,0,0.2)":"rgba(237,34,144,0.2)",color:tab==="unassigned"?"#000":B.magenta,borderRadius:10,padding:"0 6px",marginLeft:4,fontSize:9,fontWeight:800}}>{filt.length}</span>}</>:"BOARD"}
+                {t==="unassigned"?<>NEEDS BOOKING{filt.length>0&&<span style={{background:tab==="unassigned"?"rgba(0,0,0,0.2)":"rgba(237,34,144,0.2)",color:tab==="unassigned"?"#000":B.magenta,borderRadius:10,padding:"0 6px",marginLeft:4,fontSize:9,fontWeight:800}}>{filt.length}</span>}</>:"BOARD"}
               </button>
             ))}
           </div>
@@ -1114,9 +1145,9 @@ function StudioBoard(){
                 <span key={svc} style={{fontSize:9,color:B.tm,background:"rgba(0,0,0,0.04)",border:`1px solid ${B.border}`,padding:"3px 9px",borderRadius:20,fontFamily:"'Poppins',sans-serif"}}>{svc} {cnt}</span>
               ))}
             </div>
-            {filt.length===0?<div style={{textAlign:"center",padding:"60px 0"}}><div style={{fontSize:34,marginBottom:8}}>🎉</div>{gt("All tasks assigned!",15,800)}</div>:(
+            {filt.length===0?<div style={{textAlign:"center",padding:"60px 0"}}><div style={{fontSize:34,marginBottom:8}}>🎉</div>{gt("Everything fully booked!",15,800)}</div>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(330px,1fr))",gap:8}}>
-                {filt.map(t=><TCard key={t.id} task={t} designers={designers} onAssign={doAssign} isAssigning={aId===t.id} onOpen={setModalTask}/>)}
+                {filt.map(t=><TCard key={t.id} task={t} designers={designers} onOpen={setModalTask}/>)}
               </div>
             )}
           </div>
@@ -1150,9 +1181,9 @@ function StudioBoard(){
             );
           })}
           <div style={{marginTop:5,paddingTop:10,borderTop:`1px solid #e8e5df`}}>
-            <div style={{fontSize:8,color:"#948d84",fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>Unassigned</div>
+            <div style={{fontSize:8,color:"#948d84",fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:5}}>Needs Booking</div>
             <div style={{fontSize:28,fontFamily:"'Poppins',sans-serif",fontWeight:900,lineHeight:1,...(filt.length>0?{background:G,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}:{color:"#c9c4bc"})}}>{filt.length}</div>
-            <div style={{fontSize:9,color:"#948d84",fontFamily:"'Poppins',sans-serif",marginTop:2}}>{ph.toFixed(1)}h pending</div>
+            <div style={{fontSize:9,color:"#948d84",fontFamily:"'Poppins',sans-serif",marginTop:2}}>{ph.toFixed(1)}h remaining</div>
           </div>
           <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid #e8e5df`}}>
             <div style={{fontSize:8,color:"#948d84",fontFamily:"'Poppins',sans-serif",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:7}}>Priority</div>
