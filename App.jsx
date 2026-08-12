@@ -226,7 +226,7 @@ function SPill({status}){
 // Forecast badge — shown on tasks with taskType "forecast" (from the API's
 // custom_item_id mapping). Confidence label comes from the Forecast Confidence
 // dropdown in ClickUp, set automatically by the daily forecast sweep.
-const FCONF_C={"Early Discussions":"#6647f0","Quoting & Scoping":"#3e63dd","Compiling Assets":"#0091ff","Brief is ready":"#16a34a"};
+const FCONF_C={"Early Discussions":"#6647f0","Quoting & Scoping":"#3e63dd","Compiling Assets":"#0091ff","Ready to Brief":"#16a34a"};
 function FPill({task}){
   if(task.taskType!=="forecast")return null;
   const c=FCONF_C[task.forecastConfidence]||B.royalBlue;
